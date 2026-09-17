@@ -12,21 +12,76 @@ const {
 } = require("discord.js");
 
 const http = require("http");
-require("dotenv").config();
-
-// =====================================================
-// CONFIGURAÇÃO DO BOT
-// =====================================================
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
 });
+
+/* =========================================================
+   CONFIGURAÇÕES
+========================================================= */
+
+const TOKEN = process.env.DISCORD_TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID;
+const GUILD_ID = process.env.GUILD_ID;
 
 const PORT = process.env.PORT || 3000;
 
-// =====================================================
-// SERVIDOR HTTP - RENDER
-// =====================================================
+const ROLE_NAMES = {
+  FOUNDER: "👑・FUNDADOR",
+  OWNER: "💎・DONO",
+  LEADER: "⚜️・LÍDER",
+  SUBLEADER: "🔱・SUB-LÍDER",
+  MANAGER: "🎖️・GERENTE",
+  ELITE: "🔥・ELITE",
+  MEMBER: "🛡️・MEMBRO",
+  RECRUIT: "🔰・RECRUTA",
+  CANDIDATE: "📝・CANDIDATO",
+  ADMIN: "🛠️・ADMINISTRADOR",
+  MOD: "🔨・MODERADOR",
+  RECRUITER: "🎫・RECRUTADOR"
+};
+
+/*
+  A ordem está invertida de propósito.
+
+  O Discord coloca cargos novos acima dos antigos.
+  Assim, no final, FUNDADOR fica acima dos demais.
+*/
+const ROLE_ORDER = [
+  ROLE_NAMES.CANDIDATE,
+  ROLE_NAMES.RECRUIT,
+  ROLE_NAMES.MEMBER,
+  ROLE_NAMES.ELITE,
+  ROLE_NAMES.MANAGER,
+  ROLE_NAMES.SUBLEADER,
+  ROLE_NAMES.LEADER,
+  ROLE_NAMES.OWNER,
+  ROLE_NAMES.FOUNDER,
+  ROLE_NAMES.RECRUITER,
+  ROLE_NAMES.MOD,
+  ROLE_NAMES.ADMIN
+];
+
+const STAFF_ROLES = [
+  ROLE_NAMES.FOUNDER,
+  ROLE_NAMES.OWNER,
+  ROLE_NAMES.LEADER,
+  ROLE_NAMES.SUBLEADER,
+  ROLE_NAMES.MANAGER,
+  ROLE_NAMES.ADMIN,
+  ROLE_NAMES.MOD,
+  ROLE_NAMES.RECRUITER
+];
+
+/* =========================================================
+   SERVIDOR HTTP PARA O RENDER
+========================================================= */
 
 http.createServer((req, res) => {
   res.writeHead(200, {
@@ -38,419 +93,763 @@ http.createServer((req, res) => {
   console.log(`🌐 HTTP ativo na porta ${PORT}`);
 });
 
-// =====================================================
-// CARGOS DA VANILLA
-// =====================================================
+/* =========================================================
+   FUNÇÕES AUXILIARES
+========================================================= */
 
-const ROLE_NAMES = [
-  "👑・FUNDADOR",
-  "💎・DONO",
-  "⚜️・LÍDER",
-  "🔱・SUB-LÍDER",
-  "🎖️・GERENTE",
-  "🔥・ELITE",
-  "🛡️・MEMBRO",
-  "🔰・RECRUTA",
-  "📝・CANDIDATO"
-];
-
-// Cargos que poderão visualizar e atender tickets
-const STAFF_ROLES = [
-  "👑・FUNDADOR",
-  "💎・DONO",
-  "⚜️・LÍDER",
-  "🔱・SUB-LÍDER",
-  "🎖️・GERENTE"
-];
-
-// =====================================================
-// CATEGORIAS E CANAIS
-// =====================================================
-
-const CATEGORIES = {
-  "📌・INFORMAÇÕES": [
-    "👋・boas-vindas",
-    "📜・regras",
-    "📢・comunicados",
-    "📖・história-da-vanilla",
-    "👑・hierarquia",
-    "📋・códigos-internos",
-    "📅・agenda"
-  ],
-
-  "📝・RECRUTAMENTO": [
-    "📥・como-entrar",
-    "📝・formulário",
-    "🎫・entrevista",
-    "📂・candidatos",
-    "⏳・em-análise",
-    "✅・aprovados",
-    "❌・reprovados"
-  ],
-
-  "👥・MEMBROS": [
-    "💬・chat-geral",
-    "📸・mídia",
-    "🎮・momentos-rp",
-    "😂・resenha",
-    "📊・metas",
-    "🏆・conquistas",
-    "📣・avisos-internos"
-  ],
-
-  "🔒・ÁREA INTERNA": [
-    "💬・chat-interno",
-    "📡・comunicação",
-    "📍・operações-rp",
-    "🚘・veículos",
-    "📦・inventário",
-    "📋・relatórios",
-    "💰・controle-financeiro"
-  ],
-
-  "👑・COMANDO": [
-    "👑・sala-do-líder",
-    "💎・conselho",
-    "📋・reuniões",
-    "📊・relatório-geral",
-    "⚠️・advertências",
-    "📈・promoções",
-    "📁・documentos"
-  ],
-
-  "🎫・SUPORTE": [
-    "🎫・abrir-ticket",
-    "📨・tickets",
-    "❓・dúvidas",
-    "📢・denúncias-internas"
-  ],
-
-  "🤖・SISTEMA": [
-    "🤖・comandos",
-    "📜・logs",
-    "🔔・notificações",
-    "📊・registro-de-atividades"
-  ]
-};
-
-const VOICE_CHANNELS = [
-  "🔊・sala-geral",
-  "🎮・resenha",
-  "📡・comunicação-rp",
-  "🚘・equipe-rp",
-  "👑・sala-do-comando",
-  "💤・ausente"
-];
-
-// =====================================================
-// FUNÇÕES AUXILIARES
-// =====================================================
-
-function getRole(guild, roleName) {
-  return guild.roles.cache.find(
-    role => role.name === roleName
-  );
+function cleanChannelName(name) {
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 90);
 }
 
-function getStaffRoles(guild) {
-  return STAFF_ROLES
-    .map(name => getRole(guild, name))
-    .filter(Boolean);
-}
-
-function getLogsChannel(guild) {
-  return guild.channels.cache.find(
-    channel =>
-      channel.name === "📜・logs" &&
-      channel.type === ChannelType.GuildText
-  );
-}
-
-function getTicketCategory(guild) {
-  return guild.channels.cache.find(
-    channel =>
-      channel.name === "🎫・TICKETS" &&
-      channel.type === ChannelType.GuildCategory
-  );
+function getRole(guild, name) {
+  return guild.roles.cache.find(r => r.name === name);
 }
 
 function isStaff(member) {
-  if (!member) return false;
+  if (!member || !member.roles) return false;
 
   return (
-    member.permissions.has(
-      PermissionsBitField.Flags.Administrator
-    ) ||
-    member.roles.cache.some(role =>
-      STAFF_ROLES.includes(role.name)
+    member.permissions.has(PermissionsBitField.Flags.Administrator) ||
+    member.permissions.has(PermissionsBitField.Flags.ManageGuild) ||
+    STAFF_ROLES.some(roleName =>
+      member.roles.cache.some(role => role.name === roleName)
     )
   );
 }
 
-// =====================================================
-// CRIAÇÃO DOS CARGOS
-// =====================================================
+function getStaffRoles(guild) {
+  return guild.roles.cache.filter(role =>
+    STAFF_ROLES.includes(role.name)
+  );
+}
+
+/* =========================================================
+   CRIAÇÃO DOS CARGOS
+========================================================= */
 
 async function createRoles(guild) {
+  console.log("🎭 Configurando cargos...");
 
-  console.log("🔧 Verificando permissão Gerenciar Cargos...");
+  const me = guild.members.me;
 
-  const botMember = guild.members.me;
+  if (!me) {
+    throw new Error("Não consegui encontrar o bot dentro do servidor.");
+  }
 
-  if (!botMember) {
+  if (!me.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
     throw new Error(
-      "O bot não foi encontrado no servidor."
+      "O bot precisa da permissão GERENCIAR CARGOS."
     );
   }
 
-  const canManageRoles = botMember.permissions.has(
-    PermissionsBitField.Flags.ManageRoles
-  );
-
-  console.log(
-    `🛡️ Gerenciar Cargos: ${canManageRoles}`
-  );
-
-  if (!canManageRoles) {
-    throw new Error(
-      "O bot não possui a permissão GERENCIAR CARGOS."
-    );
-  }
-
-  const createdRoles = {};
-
-  for (const roleName of ROLE_NAMES) {
-
+  for (const roleName of ROLE_ORDER) {
     let role = getRole(guild, roleName);
 
     if (!role) {
-
-      console.log(
-        `➕ Criando cargo: ${roleName}`
-      );
-
       role = await guild.roles.create({
         name: roleName,
         permissions: [],
-        reason: "Configuração da VANILLA"
+        mentionable: false,
+        reason: "Configuração automática VANILLA 3.0"
       });
 
-      console.log(
-        `✅ Cargo criado: ${roleName}`
-      );
-
+      console.log(`✅ Cargo criado: ${roleName}`);
     } else {
-
-      console.log(
-        `✔️ Cargo já existe: ${roleName}`
-      );
-    }
-
-    createdRoles[roleName] = role;
-  }
-
-  return createdRoles;
-}
-
-// =====================================================
-// CRIAÇÃO DOS CANAIS
-// =====================================================
-
-async function createChannels(guild) {
-
-  console.log("📁 Verificando categorias e canais...");
-
-  for (const [categoryName, channels] of Object.entries(
-    CATEGORIES
-  )) {
-
-    let category = guild.channels.cache.find(
-      channel =>
-        channel.name === categoryName &&
-        channel.type === ChannelType.GuildCategory
-    );
-
-    if (!category) {
-
-      console.log(
-        `📁 Criando categoria: ${categoryName}`
-      );
-
-      category = await guild.channels.create({
-        name: categoryName,
-        type: ChannelType.GuildCategory
-      });
-    }
-
-    for (const channelName of channels) {
-
-      const exists = guild.channels.cache.find(
-        channel =>
-          channel.name === channelName &&
-          channel.parentId === category.id
-      );
-
-      if (!exists) {
-
-        console.log(
-          `💬 Criando canal: ${channelName}`
-        );
-
-        await guild.channels.create({
-          name: channelName,
-          type: ChannelType.GuildText,
-          parent: category.id
-        });
-      }
+      console.log(`↪️ Cargo já existe: ${roleName}`);
     }
   }
 
-  // ===================================================
-  // CATEGORIA DE VOZ
-  // ===================================================
+  /*
+    Tenta organizar a hierarquia.
+    O cargo do bot precisa continuar acima dos cargos VANILLA.
+  */
 
-  let voiceCategory = guild.channels.cache.find(
-    channel =>
-      channel.name === "🔊・SALAS DE VOZ" &&
-      channel.type === ChannelType.GuildCategory
+  const botRole = guild.roles.cache.find(
+    role => role.id === guild.members.me.roles.highest.id
   );
 
-  if (!voiceCategory) {
+  if (!botRole) return;
 
-    voiceCategory = await guild.channels.create({
-      name: "🔊・SALAS DE VOZ",
+  const positions = {};
+
+  const finalOrder = [
+    ROLE_NAMES.ADMIN,
+    ROLE_NAMES.MOD,
+    ROLE_NAMES.RECRUITER,
+    ROLE_NAMES.FOUNDER,
+    ROLE_NAMES.OWNER,
+    ROLE_NAMES.LEADER,
+    ROLE_NAMES.SUBLEADER,
+    ROLE_NAMES.MANAGER,
+    ROLE_NAMES.ELITE,
+    ROLE_NAMES.MEMBER,
+    ROLE_NAMES.RECRUIT,
+    ROLE_NAMES.CANDIDATE
+  ];
+
+  let position = botRole.position - 1;
+
+  for (const name of finalOrder) {
+    const role = getRole(guild, name);
+
+    if (role && position > 0) {
+      positions[role.id] = position;
+      position--;
+    }
+  }
+
+  try {
+    await guild.roles.setPositions(
+      Object.entries(positions).map(([role, pos]) => ({
+        role,
+        position: pos
+      }))
+    );
+
+    console.log("✅ Hierarquia organizada.");
+  } catch (error) {
+    console.log(
+      "⚠️ Não consegui reorganizar automaticamente a hierarquia."
+    );
+  }
+}
+
+/* =========================================================
+   CATEGORIAS E CANAIS
+========================================================= */
+
+const CATEGORIES = {
+  INFO: "📌・INFORMAÇÕES",
+  RECRUITMENT: "📝・RECRUTAMENTO",
+  MEMBERS: "👥・MEMBROS",
+  INTERNAL: "🔒・ÁREA INTERNA",
+  COMMAND: "👑・COMANDO",
+  TICKETS: "🎫・TICKETS",
+  SYSTEM: "🤖・SISTEMA",
+  VOICE: "🔊・SALAS DE VOZ"
+};
+
+async function getOrCreateCategory(guild, name) {
+  let category = guild.channels.cache.find(
+    channel =>
+      channel.type === ChannelType.GuildCategory &&
+      channel.name === name
+  );
+
+  if (!category) {
+    category = await guild.channels.create({
+      name,
       type: ChannelType.GuildCategory
+    });
+
+    console.log(`📁 Categoria criada: ${name}`);
+  }
+
+  return category;
+}
+
+async function getOrCreateChannel(guild, name, category) {
+  let channel = guild.channels.cache.find(
+    channel =>
+      channel.name === name &&
+      channel.parentId === category.id
+  );
+
+  if (!channel) {
+    channel = await guild.channels.create({
+      name,
+      type: ChannelType.GuildText,
+      parent: category.id
+    });
+
+    console.log(`💬 Canal criado: ${name}`);
+  }
+
+  return channel;
+}
+
+async function getOrCreateVoice(guild, name, category) {
+  let channel = guild.channels.cache.find(
+    channel =>
+      channel.name === name &&
+      channel.parentId === category.id &&
+      channel.type === ChannelType.GuildVoice
+  );
+
+  if (!channel) {
+    channel = await guild.channels.create({
+      name,
+      type: ChannelType.GuildVoice,
+      parent: category.id
+    });
+
+    console.log(`🔊 Sala criada: ${name}`);
+  }
+
+  return channel;
+}
+
+/* =========================================================
+   PERMISSÕES
+========================================================= */
+
+async function configurePermissions(guild, categories) {
+  console.log("🔐 Configurando permissões...");
+
+  const everyone = guild.roles.everyone;
+
+  const recruit = getRole(guild, ROLE_NAMES.RECRUIT);
+  const member = getRole(guild, ROLE_NAMES.MEMBER);
+  const elite = getRole(guild, ROLE_NAMES.ELITE);
+  const manager = getRole(guild, ROLE_NAMES.MANAGER);
+  const subleader = getRole(guild, ROLE_NAMES.SUBLEADER);
+  const leader = getRole(guild, ROLE_NAMES.LEADER);
+  const owner = getRole(guild, ROLE_NAMES.OWNER);
+  const founder = getRole(guild, ROLE_NAMES.FOUNDER);
+  const admin = getRole(guild, ROLE_NAMES.ADMIN);
+  const mod = getRole(guild, ROLE_NAMES.MOD);
+  const recruiter = getRole(guild, ROLE_NAMES.RECRUITER);
+
+  /*
+    ÁREA PÚBLICA
+  */
+
+  const publicCategories = [
+    categories.INFO,
+    categories.RECRUITMENT,
+    categories.MEMBERS
+  ];
+
+  for (const category of publicCategories) {
+    await category.permissionOverwrites.edit(everyone, {
+      ViewChannel: true
     });
   }
 
-  for (const channelName of VOICE_CHANNELS) {
+  /*
+    ÁREA INTERNA
+    Somente membros + cargos superiores
+  */
 
-    const exists = guild.channels.cache.find(
-      channel =>
-        channel.name === channelName &&
-        channel.parentId === voiceCategory.id
-    );
+  await categories.INTERNAL.permissionOverwrites.edit(everyone, {
+    ViewChannel: false
+  });
 
-    if (!exists) {
+  const internalRoles = [
+    member,
+    elite,
+    manager,
+    subleader,
+    leader,
+    owner,
+    founder,
+    admin,
+    mod
+  ].filter(Boolean);
 
-      await guild.channels.create({
-        name: channelName,
-        type: ChannelType.GuildVoice,
-        parent: voiceCategory.id
-      });
-    }
+  for (const role of internalRoles) {
+    await categories.INTERNAL.permissionOverwrites.edit(role, {
+      ViewChannel: true
+    });
   }
+
+  /*
+    COMANDO
+    Somente liderança/administração
+  */
+
+  await categories.COMMAND.permissionOverwrites.edit(everyone, {
+    ViewChannel: false
+  });
+
+  const commandRoles = [
+    manager,
+    subleader,
+    leader,
+    owner,
+    founder,
+    admin
+  ].filter(Boolean);
+
+  for (const role of commandRoles) {
+    await categories.COMMAND.permissionOverwrites.edit(role, {
+      ViewChannel: true
+    });
+  }
+
+  /*
+    SISTEMA
+    Somente equipe
+  */
+
+  await categories.SYSTEM.permissionOverwrites.edit(everyone, {
+    ViewChannel: false
+  });
+
+  const staffRoles = [
+    manager,
+    subleader,
+    leader,
+    owner,
+    founder,
+    admin,
+    mod,
+    recruiter
+  ].filter(Boolean);
+
+  for (const role of staffRoles) {
+    await categories.SYSTEM.permissionOverwrites.edit(role, {
+      ViewChannel: true
+    });
+  }
+
+  /*
+    TICKETS
+    A categoria fica escondida.
+    O bot libera cada ticket individualmente.
+  */
+
+  await categories.TICKETS.permissionOverwrites.edit(everyone, {
+    ViewChannel: false
+  });
+
+  for (const role of staffRoles) {
+    await categories.TICKETS.permissionOverwrites.edit(role, {
+      ViewChannel: true,
+      SendMessages: true
+    });
+  }
+
+  /*
+    SALAS DE VOZ
+  */
+
+  await categories.VOICE.permissionOverwrites.edit(everyone, {
+    ViewChannel: true,
+    Connect: true
+  });
+
+  console.log("✅ Permissões configuradas.");
 }
 
-// =====================================================
-// MENSAGEM DE BOAS-VINDAS
-// =====================================================
+/* =========================================================
+   CRIAÇÃO DO SERVIDOR
+========================================================= */
 
-async function createWelcomeMessage(guild) {
+async function createServerStructure(guild) {
+  console.log("🏗️ Criando estrutura VANILLA...");
 
+  const info = await getOrCreateCategory(
+    guild,
+    CATEGORIES.INFO
+  );
+
+  const recruitment = await getOrCreateCategory(
+    guild,
+    CATEGORIES.RECRUITMENT
+  );
+
+  const members = await getOrCreateCategory(
+    guild,
+    CATEGORIES.MEMBERS
+  );
+
+  const internal = await getOrCreateCategory(
+    guild,
+    CATEGORIES.INTERNAL
+  );
+
+  const command = await getOrCreateCategory(
+    guild,
+    CATEGORIES.COMMAND
+  );
+
+  const tickets = await getOrCreateCategory(
+    guild,
+    CATEGORIES.TICKETS
+  );
+
+  const system = await getOrCreateCategory(
+    guild,
+    CATEGORIES.SYSTEM
+  );
+
+  const voice = await getOrCreateCategory(
+    guild,
+    CATEGORIES.VOICE
+  );
+
+  const categories = {
+    INFO: info,
+    RECRUITMENT: recruitment,
+    MEMBERS: members,
+    INTERNAL: internal,
+    COMMAND: command,
+    TICKETS: tickets,
+    SYSTEM: system,
+    VOICE: voice
+  };
+
+  /* INFORMAÇÕES */
+
+  await getOrCreateChannel(
+    guild,
+    "👋・boas-vindas",
+    info
+  );
+
+  await getOrCreateChannel(
+    guild,
+    "📜・regras",
+    info
+  );
+
+  await getOrCreateChannel(
+    guild,
+    "📢・comunicados",
+    info
+  );
+
+  await getOrCreateChannel(
+    guild,
+    "📖・historia-da-vanilla",
+    info
+  );
+
+  await getOrCreateChannel(
+    guild,
+    "👑・hierarquia",
+    info
+  );
+
+  /* RECRUTAMENTO */
+
+  await getOrCreateChannel(
+    guild,
+    "📥・como-entrar",
+    recruitment
+  );
+
+  await getOrCreateChannel(
+    guild,
+    "📝・formulario",
+    recruitment
+  );
+
+  await getOrCreateChannel(
+    guild,
+    "🎫・entrevista",
+    recruitment
+  );
+
+  await getOrCreateChannel(
+    guild,
+    "📂・candidatos",
+    recruitment
+  );
+
+  await getOrCreateChannel(
+    guild,
+    "⏳・em-analise",
+    recruitment
+  );
+
+  await getOrCreateChannel(
+    guild,
+    "✅・aprovados",
+    recruitment
+  );
+
+  /* MEMBROS */
+
+  await getOrCreateChannel(
+    guild,
+    "💬・chat-geral",
+    members
+  );
+
+  await getOrCreateChannel(
+    guild,
+    "📸・midia",
+    members
+  );
+
+  await getOrCreateChannel(
+    guild,
+    "🎮・momentos-rp",
+    members
+  );
+
+  await getOrCreateChannel(
+    guild,
+    "😂・resenha",
+    members
+  );
+
+  await getOrCreateChannel(
+    guild,
+    "🏆・conquistas",
+    members
+  );
+
+  /* ÁREA INTERNA */
+
+  await getOrCreateChannel(
+    guild,
+    "💬・chat-interno",
+    internal
+  );
+
+  await getOrCreateChannel(
+    guild,
+    "📡・comunicacao",
+    internal
+  );
+
+  await getOrCreateChannel(
+    guild,
+    "📍・operacoes-rp",
+    internal
+  );
+
+  await getOrCreateChannel(
+    guild,
+    "🚘・veiculos",
+    internal
+  );
+
+  await getOrCreateChannel(
+    guild,
+    "📦・inventario",
+    internal
+  );
+
+  await getOrCreateChannel(
+    guild,
+    "📋・relatorios",
+    internal
+  );
+
+  /* COMANDO */
+
+  await getOrCreateChannel(
+    guild,
+    "👑・sala-do-lider",
+    command
+  );
+
+  await getOrCreateChannel(
+    guild,
+    "💎・conselho",
+    command
+  );
+
+  await getOrCreateChannel(
+    guild,
+    "📋・reunioes",
+    command
+  );
+
+  await getOrCreateChannel(
+    guild,
+    "📊・relatorio-geral",
+    command
+  );
+
+  await getOrCreateChannel(
+    guild,
+    "⚠️・advertencias",
+    command
+  );
+
+  await getOrCreateChannel(
+    guild,
+    "📈・promocoes",
+    command
+  );
+
+  await getOrCreateChannel(
+    guild,
+    "📁・documentos",
+    command
+  );
+
+  /* TICKETS */
+
+  await getOrCreateChannel(
+    guild,
+    "🎫・abrir-ticket",
+    tickets
+  );
+
+  /* SISTEMA */
+
+  await getOrCreateChannel(
+    guild,
+    "🤖・comandos",
+    system
+  );
+
+  await getOrCreateChannel(
+    guild,
+    "📜・logs",
+    system
+  );
+
+  await getOrCreateChannel(
+    guild,
+    "🔔・notificacoes",
+    system
+  );
+
+  /* VOZ */
+
+  await getOrCreateVoice(
+    guild,
+    "🔊・Sala Geral",
+    voice
+  );
+
+  await getOrCreateVoice(
+    guild,
+    "🎮・Resenha",
+    voice
+  );
+
+  await getOrCreateVoice(
+    guild,
+    "📡・Comunicação RP",
+    voice
+  );
+
+  await getOrCreateVoice(
+    guild,
+    "🚘・Equipe RP",
+    voice
+  );
+
+  await getOrCreateVoice(
+    guild,
+    "👑・Comando",
+    voice
+  );
+
+  await configurePermissions(guild, categories);
+
+  return categories;
+}
+
+/* =========================================================
+   MENSAGEM DE BOAS-VINDAS
+========================================================= */
+
+async function sendWelcome(guild) {
   const channel = guild.channels.cache.find(
-    c =>
-      c.name === "👋・boas-vindas" &&
-      c.type === ChannelType.GuildText
+    c => c.name === "👋・boas-vindas"
   );
 
   if (!channel) return;
 
-  const messages = await channel.messages.fetch({
-    limit: 20
+  const embed = new EmbedBuilder()
+    .setTitle("🍦 Bem-vindo à VANILLA")
+    .setDescription(
+      "Seja bem-vindo ao servidor oficial da VANILLA!\n\n" +
+      "Leia as regras, confira as informações e acompanhe os comunicados."
+    )
+    .setFooter({
+      text: "VANILLA • Organização RP"
+    });
+
+  await channel.send({
+    embeds: [embed]
+  }).catch(() => {});
+}
+
+/* =========================================================
+   PAINEL DE TICKET
+========================================================= */
+
+async function sendTicketPanel(channel) {
+  const embed = new EmbedBuilder()
+    .setTitle("🎫 Atendimento VANILLA")
+    .setDescription(
+      "Precisa falar com a equipe?\n\n" +
+      "Clique no botão abaixo para abrir um ticket privado.\n\n" +
+      "📌 Utilize o ticket para:\n" +
+      "• Dúvidas\n" +
+      "• Recrutamento\n" +
+      "• Suporte\n" +
+      "• Problemas internos\n" +
+      "• Outros assuntos relacionados à VANILLA"
+    )
+    .setFooter({
+      text: "VANILLA • Sistema de Atendimento"
+    });
+
+  const button = new ButtonBuilder()
+    .setCustomId("vanilla_open_ticket")
+    .setLabel("Abrir Ticket")
+    .setEmoji("🎫")
+    .setStyle(ButtonStyle.Primary);
+
+  const row = new ActionRowBuilder().addComponents(button);
+
+  await channel.send({
+    embeds: [embed],
+    components: [row]
   });
-
-  const alreadySent = messages.some(
-    message =>
-      message.author.id === client.user.id &&
-      message.content.includes("VANILLA")
-  );
-
-  if (!alreadySent) {
-
-    await channel.send(
-      "🍦 **VANILLA**\n\n" +
-      "Bem-vindo(a) ao servidor oficial da VANILLA!\n\n" +
-      "📜 Leia as regras.\n" +
-      "📢 Acompanhe os comunicados.\n" +
-      "🎫 Caso precise de ajuda, utilize o sistema de tickets."
-    );
-  }
 }
 
-// =====================================================
-// CONFIGURAÇÃO COMPLETA
-// =====================================================
-
-async function setupGuild(guild) {
-
-  console.log(
-    `🚀 Iniciando configuração da VANILLA em ${guild.name}`
-  );
-
-  await createRoles(guild);
-
-  await createChannels(guild);
-
-  await createWelcomeMessage(guild);
-
-  console.log(
-    "🎉 CONFIGURAÇÃO VANILLA FINALIZADA!"
-  );
-}
-
-// =====================================================
-// COMANDOS SLASH
-// =====================================================
+/* =========================================================
+   COMANDOS SLASH
+========================================================= */
 
 const commands = [
   {
     name: "setup-vanilla",
-    description:
-      "Cria e verifica a estrutura completa da VANILLA"
+    description: "Configura automaticamente o servidor VANILLA."
   },
-
   {
     name: "ticket",
-    description:
-      "Envia o painel de suporte da VANILLA"
+    description: "Publica o painel de atendimento."
   }
 ];
 
-// =====================================================
-// BOT ONLINE
-// =====================================================
+async function registerCommands() {
+  const rest = new REST({ version: "10" }).setToken(TOKEN);
 
-client.once("ready", async () => {
-
-  console.log(
-    `🍦 VANILLA BOT ONLINE: ${client.user.tag}`
+  await rest.put(
+    Routes.applicationGuildCommands(
+      CLIENT_ID,
+      GUILD_ID
+    ),
+    {
+      body: commands
+    }
   );
 
-  const rest = new REST({
-    version: "10"
-  }).setToken(
-    process.env.DISCORD_TOKEN
+  console.log("✅ Comandos slash registrados.");
+}
+
+/* =========================================================
+   EVENTO READY
+========================================================= */
+
+client.once("ready", async () => {
+  console.log(
+    `🍦 VANILLA BOT online: ${client.user.tag}`
   );
 
   try {
-
-    await rest.put(
-      Routes.applicationGuildCommands(
-        process.env.CLIENT_ID,
-        process.env.GUILD_ID
-      ),
-      {
-        body: commands
-      }
-    );
-
-    console.log(
-      "✅ Comandos slash registrados."
-    );
-
+    await registerCommands();
   } catch (error) {
-
     console.error(
       "❌ Erro ao registrar comandos:",
       error
@@ -458,603 +857,406 @@ client.once("ready", async () => {
   }
 });
 
-// =====================================================
-// INTERAÇÕES - COMANDOS
-// =====================================================
+/* =========================================================
+   INTERAÇÕES
+========================================================= */
 
-client.on(
-  "interactionCreate",
-  async interaction => {
+client.on("interactionCreate", async interaction => {
 
-    if (!interaction.isChatInputCommand()) return;
+  /* =====================================================
+     SETUP
+  ===================================================== */
 
-    // =================================================
-    // /SETUP-VANILLA
-    // =================================================
+  if (
+    interaction.isChatInputCommand() &&
+    interaction.commandName === "setup-vanilla"
+  ) {
 
     if (
-      interaction.commandName ===
-      "setup-vanilla"
+      !interaction.memberPermissions.has(
+        PermissionsBitField.Flags.Administrator
+      ) &&
+      !interaction.memberPermissions.has(
+        PermissionsBitField.Flags.ManageGuild
+      )
     ) {
-
-      await interaction.deferReply({
+      return interaction.reply({
+        content:
+          "❌ Você precisa de **Administrador** ou **Gerenciar Servidor**.",
         ephemeral: true
       });
-
-      try {
-
-        console.log(
-          `⚙️ Setup executado por ${interaction.user.tag}`
-        );
-
-        await setupGuild(
-          interaction.guild
-        );
-
-        await interaction.editReply(
-          "✅ **VANILLA configurada com sucesso!**\n\n" +
-          "Cargos, categorias, canais e sistema básico foram verificados/criados."
-        );
-
-      } catch (error) {
-
-        console.error(
-          "❌ ERRO NO SETUP:",
-          error
-        );
-
-        await interaction.editReply(
-          "❌ **Ocorreu um erro.**\n\n" +
-          "Verifique os Logs do Render para identificar o problema."
-        );
-      }
-
-      return;
     }
 
-    // =================================================
-    // /TICKET
-    // =================================================
+    await interaction.deferReply({
+      ephemeral: true
+    });
 
-    if (
-      interaction.commandName === "ticket"
-    ) {
+    try {
+      const guild = interaction.guild;
 
-      if (!isStaff(interaction.member)) {
+      await createRoles(guild);
 
-        return interaction.reply({
-          content:
-            "❌ Você não possui permissão para usar este comando.",
-          ephemeral: true
-        });
-      }
+      await createServerStructure(guild);
 
-      await interaction.deferReply({
+      await sendWelcome(guild);
+
+      await interaction.editReply(
+        "✅ **VANILLA 3.0 configurada com sucesso!**\n\n" +
+        "🎭 Cargos criados\n" +
+        "📁 Categorias criadas\n" +
+        "💬 Canais criados\n" +
+        "🔐 Permissões configuradas\n" +
+        "🎫 Sistema de tickets preparado\n" +
+        "📜 Logs preparados\n" +
+        "🔊 Salas de voz criadas"
+      );
+
+    } catch (error) {
+
+      console.error("❌ ERRO NO SETUP:", error);
+
+      await interaction.editReply(
+        "❌ Ocorreu um erro durante a configuração.\n\n" +
+        "Confira os logs do Render para descobrir o problema."
+      ).catch(() => {});
+    }
+
+    return;
+  }
+
+  /* =====================================================
+     COMANDO TICKET
+  ===================================================== */
+
+  if (
+    interaction.isChatInputCommand() &&
+    interaction.commandName === "ticket"
+  ) {
+
+    if (!isStaff(interaction.member)) {
+      return interaction.reply({
+        content:
+          "❌ Você não tem permissão para usar este comando.",
         ephemeral: true
       });
-
-      try {
-
-        const existingPanel =
-          interaction.channel;
-
-        const embed = new EmbedBuilder()
-          .setTitle("🎫 SUPORTE VANILLA")
-          .setDescription(
-            "Precisa de ajuda?\n\n" +
-            "Clique no botão abaixo para abrir um atendimento privado com a equipe da VANILLA.\n\n" +
-            "🔒 Seu ticket será visível somente para você e para a equipe autorizada."
-          )
-          .setFooter({
-            text: "VANILLA • Sistema de Suporte"
-          });
-
-        const openButton =
-          new ButtonBuilder()
-            .setCustomId("vanilla_open_ticket")
-            .setLabel("Abrir Ticket")
-            .setEmoji("🎫")
-            .setStyle(ButtonStyle.Primary);
-
-        const row =
-          new ActionRowBuilder()
-            .addComponents(openButton);
-
-        await existingPanel.send({
-          embeds: [embed],
-          components: [row]
-        });
-
-        await interaction.editReply(
-          "✅ **Painel de tickets enviado!**"
-        );
-
-      } catch (error) {
-
-        console.error(
-          "❌ Erro ao enviar painel:",
-          error
-        );
-
-        await interaction.editReply(
-          "❌ Não consegui enviar o painel de tickets."
-        );
-      }
-
-      return;
-    }
-  }
-);
-
-// =====================================================
-// INTERAÇÕES - BOTÕES
-// =====================================================
-
-client.on(
-  "interactionCreate",
-  async interaction => {
-
-    if (!interaction.isButton()) return;
-
-    // =================================================
-    // ABRIR TICKET
-    // =================================================
-
-    if (
-      interaction.customId ===
-      "vanilla_open_ticket"
-    ) {
-
-      try {
-
-        const guild = interaction.guild;
-        const user = interaction.user;
-
-        // ---------------------------------------------
-        // Verifica se já existe ticket
-        // ---------------------------------------------
-
-        const existingTicket =
-          guild.channels.cache.find(
-            channel =>
-              channel.type === ChannelType.GuildText &&
-              channel.topic === `ticket:${user.id}`
-          );
-
-        if (existingTicket) {
-
-          return interaction.reply({
-            content:
-              `❌ Você já possui um ticket aberto: ${existingTicket}`,
-            ephemeral: true
-          });
-        }
-
-        // ---------------------------------------------
-        // Categoria de tickets
-        // ---------------------------------------------
-
-        let category =
-          getTicketCategory(guild);
-
-        if (!category) {
-
-          category =
-            await guild.channels.create({
-              name: "🎫・TICKETS",
-              type: ChannelType.GuildCategory
-            });
-        }
-
-        // ---------------------------------------------
-        // Permissões
-        // ---------------------------------------------
-
-        const permissionOverwrites = [
-
-          // @everyone não vê
-          {
-            id: guild.id,
-
-            deny: [
-              PermissionsBitField.Flags.ViewChannel
-            ]
-          },
-
-          // Usuário que abriu
-          {
-            id: user.id,
-
-            allow: [
-              PermissionsBitField.Flags.ViewChannel,
-              PermissionsBitField.Flags.SendMessages,
-              PermissionsBitField.Flags.ReadMessageHistory,
-              PermissionsBitField.Flags.AttachFiles,
-              PermissionsBitField.Flags.EmbedLinks
-            ]
-          }
-        ];
-
-        // ---------------------------------------------
-        // Adiciona cargos da equipe
-        // ---------------------------------------------
-
-        const staffRoles =
-          getStaffRoles(guild);
-
-        for (const role of staffRoles) {
-
-          permissionOverwrites.push({
-            id: role.id,
-
-            allow: [
-              PermissionsBitField.Flags.ViewChannel,
-              PermissionsBitField.Flags.SendMessages,
-              PermissionsBitField.Flags.ReadMessageHistory,
-              PermissionsBitField.Flags.ManageMessages,
-              PermissionsBitField.Flags.AttachFiles,
-              PermissionsBitField.Flags.EmbedLinks
-            ]
-          });
-        }
-
-        // ---------------------------------------------
-        // Cria ticket
-        // ---------------------------------------------
-
-        const safeUsername =
-          user.username
-            .toLowerCase()
-            .replace(/[^a-z0-9-]/g, "")
-            .slice(0, 20) || "usuario";
-
-        const ticketChannel =
-          await guild.channels.create({
-
-            name: `🎫・ticket-${safeUsername}`,
-
-            type: ChannelType.GuildText,
-
-            parent: category.id,
-
-            topic: `ticket:${user.id}`,
-
-            permissionOverwrites
-          });
-
-        // ---------------------------------------------
-        // Botões do ticket
-        // ---------------------------------------------
-
-        const claimButton =
-          new ButtonBuilder()
-            .setCustomId("vanilla_claim_ticket")
-            .setLabel("Assumir Ticket")
-            .setEmoji("🟢")
-            .setStyle(ButtonStyle.Success);
-
-        const closeButton =
-          new ButtonBuilder()
-            .setCustomId("vanilla_close_ticket")
-            .setLabel("Fechar Ticket")
-            .setEmoji("🔒")
-            .setStyle(ButtonStyle.Secondary);
-
-        const deleteButton =
-          new ButtonBuilder()
-            .setCustomId("vanilla_delete_ticket")
-            .setLabel("Excluir Ticket")
-            .setEmoji("🗑️")
-            .setStyle(ButtonStyle.Danger);
-
-        const row =
-          new ActionRowBuilder()
-            .addComponents(
-              claimButton,
-              closeButton,
-              deleteButton
-            );
-
-        const embed =
-          new EmbedBuilder()
-            .setTitle("🎫 Atendimento VANILLA")
-            .setDescription(
-              `Olá, ${user}!\n\n` +
-              "Seu ticket foi aberto com sucesso.\n\n" +
-              "📝 Explique detalhadamente o motivo do contato.\n" +
-              "👥 Um membro da equipe irá atender você.\n\n" +
-              "🔒 **Não abra vários tickets para o mesmo assunto.**"
-            )
-            .setFooter({
-              text:
-                "VANILLA • Sistema de Atendimento"
-            });
-
-        await ticketChannel.send({
-          content:
-            `${user} ${staffRoles
-              .map(role => `<@&${role.id}>`)
-              .join(" ")}`,
-
-          embeds: [embed],
-
-          components: [row]
-        });
-
-        // ---------------------------------------------
-        // Log
-        // ---------------------------------------------
-
-        const logs =
-          getLogsChannel(guild);
-
-        if (logs) {
-
-          await logs.send(
-            `🎫 **Ticket aberto**\n` +
-            `👤 Usuário: ${user}\n` +
-            `📁 Canal: ${ticketChannel}\n` +
-            `🕒 Data: <t:${Math.floor(Date.now() / 1000)}:F>`
-          );
-        }
-
-        await interaction.reply({
-          content:
-            `✅ Seu ticket foi criado: ${ticketChannel}`,
-          ephemeral: true
-        });
-
-      } catch (error) {
-
-        console.error(
-          "❌ ERRO AO ABRIR TICKET:",
-          error
-        );
-
-        if (!interaction.replied) {
-
-          await interaction.reply({
-            content:
-              "❌ Não foi possível criar o ticket.",
-            ephemeral: true
-          });
-        }
-      }
-
-      return;
     }
 
-    // =================================================
-    // ASSUMIR TICKET
-    // =================================================
-
-    if (
-      interaction.customId ===
-      "vanilla_claim_ticket"
-    ) {
-
-      if (!isStaff(interaction.member)) {
-
-        return interaction.reply({
-          content:
-            "❌ Apenas a equipe autorizada pode assumir tickets.",
-          ephemeral: true
-        });
-      }
-
-      const channel =
-        interaction.channel;
-
-      if (
-        !channel.topic ||
-        !channel.topic.startsWith("ticket:")
-      ) {
-
-        return interaction.reply({
-          content:
-            "❌ Este canal não é um ticket.",
-          ephemeral: true
-        });
-      }
-
-      await interaction.reply(
-        `🟢 **Ticket assumido!**\n\n👤 Responsável: ${interaction.user}`
-      );
-
-      const logs =
-        getLogsChannel(interaction.guild);
-
-      if (logs) {
-
-        await logs.send(
-          `🟢 **Ticket assumido**\n` +
-          `🎫 Canal: ${channel}\n` +
-          `👤 Responsável: ${interaction.user}\n` +
-          `🕒 <t:${Math.floor(Date.now() / 1000)}:F>`
-        );
-      }
-
-      return;
-    }
-
-    // =================================================
-    // FECHAR TICKET
-    // =================================================
-
-    if (
-      interaction.customId ===
-      "vanilla_close_ticket"
-    ) {
-
-      if (!isStaff(interaction.member)) {
-
-        return interaction.reply({
-          content:
-            "❌ Apenas a equipe autorizada pode fechar tickets.",
-          ephemeral: true
-        });
-      }
-
-      const channel =
-        interaction.channel;
-
-      if (
-        !channel.topic ||
-        !channel.topic.startsWith("ticket:")
-      ) {
-
-        return interaction.reply({
-          content:
-            "❌ Este canal não é um ticket.",
-          ephemeral: true
-        });
-      }
-
-      await interaction.reply(
-        "🔒 **Ticket fechado.**\n\nO atendimento foi encerrado pela equipe."
-      );
-
-      // Remove permissão de envio do usuário
-      const userId =
-        channel.topic.replace("ticket:", "");
-
-      try {
-
-        await channel.permissionOverwrites.edit(
-          userId,
-          {
-            SendMessages: false
-          }
-        );
-
-      } catch (error) {
-
-        console.error(
-          "Erro ao bloquear usuário:",
-          error
-        );
-      }
-
-      const logs =
-        getLogsChannel(interaction.guild);
-
-      if (logs) {
-
-        await logs.send(
-          `🔒 **Ticket fechado**\n` +
-          `🎫 Canal: ${channel}\n` +
-          `👤 Fechado por: ${interaction.user}\n` +
-          `🕒 <t:${Math.floor(Date.now() / 1000)}:F>`
-        );
-      }
-
-      return;
-    }
-
-    // =================================================
-    // EXCLUIR TICKET
-    // =================================================
-
-    if (
-      interaction.customId ===
-      "vanilla_delete_ticket"
-    ) {
-
-      if (!isStaff(interaction.member)) {
-
-        return interaction.reply({
-          content:
-            "❌ Apenas a equipe autorizada pode excluir tickets.",
-          ephemeral: true
-        });
-      }
-
-      const channel =
-        interaction.channel;
-
-      if (
-        !channel.topic ||
-        !channel.topic.startsWith("ticket:")
-      ) {
-
-        return interaction.reply({
-          content:
-            "❌ Este canal não é um ticket.",
-          ephemeral: true
-        });
-      }
-
-      const channelName =
-        channel.name;
-
-      const logs =
-        getLogsChannel(interaction.guild);
-
-      if (logs) {
-
-        await logs.send(
-          `🗑️ **Ticket excluído**\n` +
-          `📁 Canal: **${channelName}**\n` +
-          `👤 Excluído por: ${interaction.user}\n` +
-          `🕒 <t:${Math.floor(Date.now() / 1000)}:F>`
-        );
-      }
-
-      await interaction.reply(
-        "🗑️ **Excluindo ticket...**"
-      );
-
-      setTimeout(async () => {
-
-        try {
-
-          await channel.delete(
-            "Ticket encerrado pela equipe VANILLA"
-          );
-
-        } catch (error) {
-
-          console.error(
-            "❌ Erro ao excluir ticket:",
-            error
-          );
-        }
-
-      }, 2000);
-
-      return;
-    }
-  }
-);
-
-// =====================================================
-// ERROS
-// =====================================================
-
-process.on(
-  "unhandledRejection",
-  error => {
-    console.error(
-      "❌ Unhandled Rejection:",
-      error
+    const channel = interaction.guild.channels.cache.find(
+      c => c.name === "🎫・abrir-ticket"
     );
-  }
-);
 
-process.on(
-  "uncaughtException",
-  error => {
-    console.error(
-      "❌ Uncaught Exception:",
-      error
+    if (!channel) {
+      return interaction.reply({
+        content:
+          "❌ O canal `🎫・abrir-ticket` não existe. Execute `/setup-vanilla` primeiro.",
+        ephemeral: true
+      });
+    }
+
+    await sendTicketPanel(channel);
+
+    return interaction.reply({
+      content:
+        `✅ Painel de tickets enviado em ${channel}.`,
+      ephemeral: true
+    });
+  }
+
+  /* =====================================================
+     ABRIR TICKET
+  ===================================================== */
+
+  if (
+    interaction.isButton() &&
+    interaction.customId === "vanilla_open_ticket"
+  ) {
+
+    const guild = interaction.guild;
+    const user = interaction.user;
+
+    const ticketCategory = guild.channels.cache.find(
+      c =>
+        c.name === "🎫・TICKETS" &&
+        c.type === ChannelType.GuildCategory
     );
+
+    if (!ticketCategory) {
+      return interaction.reply({
+        content:
+          "❌ A categoria de tickets não existe. Execute `/setup-vanilla`.",
+        ephemeral: true
+      });
+    }
+
+    const existingTicket = guild.channels.cache.find(
+      channel =>
+        channel.parentId === ticketCategory.id &&
+        channel.topic === `ticket:${user.id}`
+    );
+
+    if (existingTicket) {
+      return interaction.reply({
+        content:
+          `❌ Você já possui um ticket aberto: ${existingTicket}`,
+        ephemeral: true
+      });
+    }
+
+    const staffRoles = getStaffRoles(guild);
+
+    const permissionOverwrites = [
+      {
+        id: guild.roles.everyone.id,
+        deny: [
+          PermissionsBitField.Flags.ViewChannel
+        ]
+      },
+      {
+        id: user.id,
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.SendMessages,
+          PermissionsBitField.Flags.ReadMessageHistory,
+          PermissionsBitField.Flags.AttachFiles
+        ]
+      }
+    ];
+
+    for (const role of staffRoles.values()) {
+      permissionOverwrites.push({
+        id: role.id,
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.SendMessages,
+          PermissionsBitField.Flags.ReadMessageHistory,
+          PermissionsBitField.Flags.AttachFiles
+        ]
+      });
+    }
+
+    const ticketChannel = await guild.channels.create({
+      name: `ticket-${cleanChannelName(user.username)}`,
+      type: ChannelType.GuildText,
+      parent: ticketCategory.id,
+      topic: `ticket:${user.id}`,
+      permissionOverwrites
+    });
+
+    const embed = new EmbedBuilder()
+      .setTitle("🎫 Ticket VANILLA")
+      .setDescription(
+        `Olá ${user}!\n\n` +
+        "Seu atendimento foi criado.\n" +
+        "Explique o motivo do contato e aguarde a equipe.\n\n" +
+        "🔒 Este canal é privado."
+      )
+      .setFooter({
+        text: "VANILLA • Atendimento"
+      });
+
+    const claimButton = new ButtonBuilder()
+      .setCustomId("vanilla_claim_ticket")
+      .setLabel("Assumir")
+      .setEmoji("👋")
+      .setStyle(ButtonStyle.Primary);
+
+    const closeButton = new ButtonBuilder()
+      .setCustomId("vanilla_close_ticket")
+      .setLabel("Fechar")
+      .setEmoji("🔒")
+      .setStyle(ButtonStyle.Secondary);
+
+    const deleteButton = new ButtonBuilder()
+      .setCustomId("vanilla_delete_ticket")
+      .setLabel("Excluir")
+      .setEmoji("🗑️")
+      .setStyle(ButtonStyle.Danger);
+
+    const row = new ActionRowBuilder().addComponents(
+      claimButton,
+      closeButton,
+      deleteButton
+    );
+
+    const mentions = staffRoles
+      .map(role => `<@&${role.id}>`)
+      .join(" ");
+
+    await ticketChannel.send({
+      content: `${user} ${mentions}`,
+      embeds: [embed],
+      components: [row]
+    });
+
+    const logChannel = guild.channels.cache.find(
+      c => c.name === "📜・logs"
+    );
+
+    if (logChannel) {
+      await logChannel.send(
+        `🎫 Ticket aberto por ${user} em ${ticketChannel}.`
+      ).catch(() => {});
+    }
+
+    return interaction.reply({
+      content:
+        `✅ Seu ticket foi criado: ${ticketChannel}`,
+      ephemeral: true
+    });
   }
-);
 
-// =====================================================
-// LOGIN
-// =====================================================
+  /* =====================================================
+     ASSUMIR TICKET
+  ===================================================== */
 
-client.login(
-  process.env.DISCORD_TOKEN
-);
+  if (
+    interaction.isButton() &&
+    interaction.customId === "vanilla_claim_ticket"
+  ) {
+
+    if (!isStaff(interaction.member)) {
+      return interaction.reply({
+        content:
+          "❌ Apenas a equipe pode assumir tickets.",
+        ephemeral: true
+      });
+    }
+
+    await interaction.reply({
+      content:
+        `👋 Ticket assumido por ${interaction.user}.`
+    });
+
+    const logChannel = interaction.guild.channels.cache.find(
+      c => c.name === "📜・logs"
+    );
+
+    if (logChannel) {
+      await logChannel.send(
+        `👋 ${interaction.user} assumiu o ticket ${interaction.channel}.`
+      ).catch(() => {});
+    }
+
+    return;
+  }
+
+  /* =====================================================
+     FECHAR TICKET
+  ===================================================== */
+
+  if (
+    interaction.isButton() &&
+    interaction.customId === "vanilla_close_ticket"
+  ) {
+
+    if (!isStaff(interaction.member)) {
+      return interaction.reply({
+        content:
+          "❌ Apenas a equipe pode fechar tickets.",
+        ephemeral: true
+      });
+    }
+
+    const topic = interaction.channel.topic || "";
+
+    if (!topic.startsWith("ticket:")) {
+      return interaction.reply({
+        content:
+          "❌ Este canal não é um ticket.",
+        ephemeral: true
+      });
+    }
+
+    const userId = topic.replace("ticket:", "");
+
+    await interaction.channel.permissionOverwrites.edit(
+      userId,
+      {
+        SendMessages: false
+      }
+    );
+
+    await interaction.reply({
+      content:
+        "🔒 **Ticket fechado.**\n\n" +
+        "A equipe ainda pode acessar este canal."
+    });
+
+    const logChannel = interaction.guild.channels.cache.find(
+      c => c.name === "📜・logs"
+    );
+
+    if (logChannel) {
+      await logChannel.send(
+        `🔒 ${interaction.user} fechou o ticket ${interaction.channel}.`
+      ).catch(() => {});
+    }
+
+    return;
+  }
+
+  /* =====================================================
+     EXCLUIR TICKET
+  ===================================================== */
+
+  if (
+    interaction.isButton() &&
+    interaction.customId === "vanilla_delete_ticket"
+  ) {
+
+    if (!isStaff(interaction.member)) {
+      return interaction.reply({
+        content:
+          "❌ Apenas a equipe pode excluir tickets.",
+        ephemeral: true
+      });
+    }
+
+    const channelName = interaction.channel.name;
+
+    const logChannel = interaction.guild.channels.cache.find(
+      c => c.name === "📜・logs"
+    );
+
+    if (logChannel) {
+      await logChannel.send(
+        `🗑️ ${interaction.user} excluiu o ticket #${channelName}.`
+      ).catch(() => {});
+    }
+
+    await interaction.reply(
+      "🗑️ Ticket será excluído em alguns segundos..."
+    );
+
+    setTimeout(async () => {
+      await interaction.channel.delete().catch(() => {});
+    }, 2000);
+
+    return;
+  }
+});
+
+/* =========================================================
+   ERROS
+========================================================= */
+
+client.on("error", error => {
+  console.error("❌ Erro do Discord:", error);
+});
+
+process.on("unhandledRejection", error => {
+  console.error("❌ Promise rejeitada:", error);
+});
+
+/* =========================================================
+   LOGIN
+========================================================= */
+
+if (!TOKEN) {
+  console.error(
+    "❌ DISCORD_TOKEN não configurado."
+  );
+  process.exit(1);
+}
+
+client.login(TOKEN);
