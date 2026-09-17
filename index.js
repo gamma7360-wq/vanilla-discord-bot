@@ -1,41 +1,55 @@
-require("dotenv").config();
-const http = require("http");
 const {
   Client,
   GatewayIntentBits,
-  PermissionFlagsBits,
+  PermissionsBitField,
   ChannelType,
+  REST,
+  Routes,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  EmbedBuilder,
-  REST,
-  Routes,
-  SlashCommandBuilder
+  EmbedBuilder
 } = require("discord.js");
+
+const http = require("http");
+require("dotenv").config();
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
-const ROLE_DEFS = [
-  ["👑・FUNDADOR", 0],
-  ["💎・DONO", 0],
-  ["⚜️・LÍDER", 0],
-  ["🔱・SUB-LÍDER", 0],
-  ["🎖️・GERENTE", 0],
-  ["🔥・ELITE", 0],
-  ["🛡️・MEMBRO", 0],
-  ["🔰・RECRUTA", 0],
-  ["📝・CANDIDATO", 0],
-  ["🛠️・ADMINISTRADOR", 0],
-  ["🔨・MODERADOR", 0],
-  ["🎫・RECRUTADOR", 0],
-  ["🤖・BOT", 0]
+// ===============================
+// SERVIDOR HTTP PARA O RENDER
+// ===============================
+const PORT = process.env.PORT || 3000;
+
+http.createServer((req, res) => {
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("VANILLA BOT ONLINE");
+}).listen(PORT, () => {
+  console.log(`🌐 HTTP ativo na porta ${PORT}`);
+});
+
+// ===============================
+// CARGOS
+// ===============================
+const ROLES = [
+  "👑・FUNDADOR",
+  "💎・DONO",
+  "⚜️・LÍDER",
+  "🔱・SUB-LÍDER",
+  "🎖️・GERENTE",
+  "🔥・ELITE",
+  "🛡️・MEMBRO",
+  "🔰・RECRUTA",
+  "📝・CANDIDATO"
 ];
 
-const STRUCTURE = [
-  ["📌・INFORMAÇÕES", [
+// ===============================
+// CATEGORIAS E CANAIS
+// ===============================
+const CATEGORIES = {
+  "📌・INFORMAÇÕES": [
     "👋・boas-vindas",
     "📜・regras",
     "📢・comunicados",
@@ -43,8 +57,9 @@ const STRUCTURE = [
     "👑・hierarquia",
     "📋・códigos-internos",
     "📅・agenda"
-  ]],
-  ["📝・RECRUTAMENTO", [
+  ],
+
+  "📝・RECRUTAMENTO": [
     "📥・como-entrar",
     "📝・formulário",
     "🎫・entrevista",
@@ -52,8 +67,9 @@ const STRUCTURE = [
     "⏳・em-análise",
     "✅・aprovados",
     "❌・reprovados"
-  ]],
-  ["👥・MEMBROS", [
+  ],
+
+  "👥・MEMBROS": [
     "💬・chat-geral",
     "📸・mídia",
     "🎮・momentos-rp",
@@ -61,8 +77,9 @@ const STRUCTURE = [
     "📊・metas",
     "🏆・conquistas",
     "📣・avisos-internos"
-  ]],
-  ["🔒・ÁREA INTERNA", [
+  ],
+
+  "🔒・ÁREA INTERNA": [
     "💬・chat-interno",
     "📡・comunicação",
     "📍・operações-rp",
@@ -70,8 +87,9 @@ const STRUCTURE = [
     "📦・inventário",
     "📋・relatórios",
     "💰・controle-financeiro"
-  ]],
-  ["👑・COMANDO", [
+  ],
+
+  "👑・COMANDO": [
     "👑・sala-do-líder",
     "💎・conselho",
     "📋・reuniões",
@@ -79,22 +97,24 @@ const STRUCTURE = [
     "⚠️・advertências",
     "📈・promoções",
     "📁・documentos"
-  ]],
-  ["🎫・SUPORTE", [
+  ],
+
+  "🎫・SUPORTE": [
     "🎫・abrir-ticket",
     "📨・tickets",
     "❓・dúvidas",
     "📢・denúncias-internas"
-  ]],
-  ["🤖・SISTEMA", [
+  ],
+
+  "🤖・SISTEMA": [
     "🤖・comandos",
     "📜・logs",
     "🔔・notificações",
     "📊・registro-de-atividades"
-  ]]
-];
+  ]
+};
 
-const VOICE = [
+const VOICE_CHANNELS = [
   "🔊・sala-geral",
   "🎮・resenha",
   "📡・comunicação-rp",
@@ -103,435 +123,339 @@ const VOICE = [
   "💤・ausente"
 ];
 
-function findRole(guild, name) {
-  return guild.roles.cache.find(role => role.name === name);
-}
+// ===============================
+// FUNÇÃO PARA CRIAR CARGOS
+// ===============================
+async function createRoles(guild) {
+  console.log("🔧 Verificando permissões...");
 
-async function createRole(guild, name) {
-  let role = findRole(guild, name);
+  const me = guild.members.me;
 
-  if (!role) {
-    role = await guild.roles.create({
-      name,
-      permissions: [],
-      reason: "VANILLA"
-    });
+  if (!me) {
+    throw new Error("Não consegui encontrar o bot dentro do servidor.");
   }
 
-  return role;
-}
-
-async function createTextChannel(guild, parent, name) {
-  let channel = guild.channels.cache.find(
-    c =>
-      c.type === ChannelType.GuildText &&
-      c.name === name &&
-      c.parentId === parent.id
+  console.log(
+    `🤖 Bot: ${me.user.tag}`
   );
 
-  if (!channel) {
-    channel = await guild.channels.create({
-      name,
-      type: ChannelType.GuildText,
-      parent: parent.id,
-      reason: "VANILLA"
-    });
-  }
-
-  return channel;
-}
-
-async function createVoiceChannel(guild, parent, name) {
-  let channel = guild.channels.cache.find(
-    c =>
-      c.type === ChannelType.GuildVoice &&
-      c.name === name &&
-      c.parentId === parent.id
+  console.log(
+    `🛡️ Manage Roles: ${
+      me.permissions.has(PermissionsBitField.Flags.ManageRoles)
+    }`
   );
 
-  if (!channel) {
-    channel = await guild.channels.create({
-      name,
-      type: ChannelType.GuildVoice,
-      parent: parent.id,
-      reason: "VANILLA"
-    });
+  if (!me.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+    throw new Error(
+      "O bot não possui a permissão GERENCIAR CARGOS."
+    );
   }
 
-  return channel;
+  const createdRoles = {};
+
+  for (const roleName of ROLES) {
+    let role = guild.roles.cache.find(
+      r => r.name === roleName
+    );
+
+    if (!role) {
+      console.log(`➕ Criando cargo: ${roleName}`);
+
+      role = await guild.roles.create({
+        name: roleName,
+        permissions: [],
+        reason: "Configuração automática VANILLA"
+      });
+
+      console.log(`✅ Cargo criado: ${roleName}`);
+    } else {
+      console.log(`✔️ Cargo já existe: ${roleName}`);
+    }
+
+    createdRoles[roleName] = role;
+  }
+
+  return createdRoles;
 }
 
-async function setup(guild) {
-  for (const [roleName] of ROLE_DEFS) {
-    await createRole(guild, roleName);
-  }
+// ===============================
+// FUNÇÃO PARA CRIAR ESTRUTURA
+// ===============================
+async function setupGuild(guild) {
+  console.log("🚀 Iniciando configuração VANILLA...");
 
-  for (const [categoryName, channels] of STRUCTURE) {
+  const roles = await createRoles(guild);
+
+  // CATEGORIAS
+  for (const [categoryName, channels] of Object.entries(CATEGORIES)) {
     let category = guild.channels.cache.find(
       c =>
-        c.type === ChannelType.GuildCategory &&
-        c.name === categoryName
+        c.name === categoryName &&
+        c.type === ChannelType.GuildCategory
     );
 
     if (!category) {
+      console.log(`📁 Criando categoria: ${categoryName}`);
+
       category = await guild.channels.create({
         name: categoryName,
-        type: ChannelType.GuildCategory,
-        reason: "VANILLA"
+        type: ChannelType.GuildCategory
       });
     }
 
     for (const channelName of channels) {
-      await createTextChannel(guild, category, channelName);
+      const exists = guild.channels.cache.find(
+        c =>
+          c.name === channelName &&
+          c.parentId === category.id
+      );
+
+      if (!exists) {
+        console.log(`💬 Criando canal: ${channelName}`);
+
+        await guild.channels.create({
+          name: channelName,
+          type: ChannelType.GuildText,
+          parent: category.id
+        });
+      }
     }
   }
 
+  // CATEGORIA DE VOZ
   let voiceCategory = guild.channels.cache.find(
     c =>
-      c.type === ChannelType.GuildCategory &&
-      c.name === "🔊・SALAS DE VOZ"
+      c.name === "🔊・SALAS DE VOZ" &&
+      c.type === ChannelType.GuildCategory
   );
 
   if (!voiceCategory) {
     voiceCategory = await guild.channels.create({
       name: "🔊・SALAS DE VOZ",
-      type: ChannelType.GuildCategory,
-      reason: "VANILLA"
+      type: ChannelType.GuildCategory
     });
   }
 
-  for (const voiceName of VOICE) {
-    await createVoiceChannel(guild, voiceCategory, voiceName);
+  for (const channelName of VOICE_CHANNELS) {
+    const exists = guild.channels.cache.find(
+      c =>
+        c.name === channelName &&
+        c.parentId === voiceCategory.id
+    );
+
+    if (!exists) {
+      await guild.channels.create({
+        name: channelName,
+        type: ChannelType.GuildVoice,
+        parent: voiceCategory.id
+      });
+    }
   }
 
+  // MENSAGEM DE BOAS-VINDAS
   const welcome = guild.channels.cache.find(
-    c =>
-      c.type === ChannelType.GuildText &&
-      c.name === "👋・boas-vindas"
+    c => c.name === "👋・boas-vindas"
   );
 
   if (welcome) {
-    await welcome.send(
-      "🍦 **BEM-VINDO À VANILLA**\n\n" +
-      "Seja bem-vindo(a) à nossa família!\n\n" +
-      "Leia as regras e conheça nossa estrutura.\n\n" +
-      "**LEALDADE • RESPEITO • UNIÃO**"
-    ).catch(() => {});
-  }
-}
-
-function staffRoles(guild) {
-  return [
-    "🎫・RECRUTADOR",
-    "🔨・MODERADOR",
-    "🎖️・GERENTE",
-    "🔱・SUB-LÍDER",
-    "⚜️・LÍDER",
-    "💎・DONO",
-    "👑・FUNDADOR",
-    "🛠️・ADMINISTRADOR"
-  ]
-    .map(name => findRole(guild, name))
-    .filter(Boolean);
-}
-
-async function openTicket(interaction) {
-  const guild = interaction.guild;
-
-  const existing = guild.channels.cache.find(
-    channel =>
-      channel.type === ChannelType.GuildText &&
-      channel.topic === `ticket:${interaction.user.id}`
-  );
-
-  if (existing) {
-    return interaction.reply({
-      content: `❌ Você já possui um ticket: ${existing}`,
-      ephemeral: true
-    });
-  }
-
-  let category = guild.channels.cache.find(
-    c =>
-      c.type === ChannelType.GuildCategory &&
-      c.name === "🎫・TICKETS"
-  );
-
-  if (!category) {
-    category = await guild.channels.create({
-      name: "🎫・TICKETS",
-      type: ChannelType.GuildCategory,
-      reason: "VANILLA Tickets"
-    });
-  }
-
-  const staff = staffRoles(guild);
-
-  const overwrites = [
-    {
-      id: guild.roles.everyone.id,
-      deny: [PermissionFlagsBits.ViewChannel]
-    },
-    {
-      id: interaction.user.id,
-      allow: [
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.SendMessages,
-        PermissionFlagsBits.ReadMessageHistory
-      ]
-    },
-    ...staff.map(role => ({
-      id: role.id,
-      allow: [
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.SendMessages,
-        PermissionFlagsBits.ReadMessageHistory
-      ]
-    }))
-  ];
-
-  const username =
-    interaction.user.username
-      .toLowerCase()
-      .replace(/[^a-z0-9-]/g, "")
-      .slice(0, 18) || "usuario";
-
-  const ticket = await guild.channels.create({
-    name: `ticket-${username}`,
-    type: ChannelType.GuildText,
-    parent: category.id,
-    topic: `ticket:${interaction.user.id}`,
-    permissionOverwrites: overwrites,
-    reason: `Ticket VANILLA`
-  });
-
-  const buttons = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("ticket_claim")
-      .setLabel("Assumir Ticket")
-      .setStyle(ButtonStyle.Primary),
-
-    new ButtonBuilder()
-      .setCustomId("ticket_close")
-      .setLabel("Fechar Ticket")
-      .setStyle(ButtonStyle.Danger)
-  );
-
-  const embed = new EmbedBuilder()
-    .setTitle("🍦 | TICKET VANILLA")
-    .setDescription(
-      `Olá, ${interaction.user}!\n\n` +
-      "Descreva seu assunto abaixo. Um membro da equipe irá atender você."
-    )
-    .setFooter({
-      text: "VANILLA • Suporte"
+    const messages = await welcome.messages.fetch({
+      limit: 10
     });
 
-  await ticket.send({
-    embeds: [embed],
-    components: [buttons]
-  });
-
-  await interaction.reply({
-    content: `✅ Ticket criado: ${ticket}`,
-    ephemeral: true
-  });
-}
-
-client.once("ready", async () => {
-  console.log(`🍦 VANILLA BOT online: ${client.user.tag}`);
-
-  try {
-    const commands = [
-      new SlashCommandBuilder()
-        .setName("setup-vanilla")
-        .setDescription("Cria a estrutura da VANILLA.")
-        .setDefaultMemberPermissions(
-          PermissionFlagsBits.ManageGuild
-        ),
-
-      new SlashCommandBuilder()
-        .setName("ticket")
-        .setDescription("Publica o painel de tickets.")
-        .setDefaultMemberPermissions(
-          PermissionFlagsBits.ManageGuild
-        )
-    ];
-
-    const rest = new REST({ version: "10" }).setToken(
-      process.env.DISCORD_TOKEN
+    const alreadySent = messages.some(
+      m =>
+        m.author.id === client.user.id &&
+        m.content.includes("VANILLA")
     );
 
+    if (!alreadySent) {
+      await welcome.send(
+        "🍦 **VANILLA**\n\nBem-vindo(a) ao servidor oficial da VANILLA!\n\nLeia as regras e acompanhe os comunicados."
+      );
+    }
+  }
+
+  console.log("🎉 CONFIGURAÇÃO VANILLA FINALIZADA!");
+
+  return true;
+}
+
+// ===============================
+// COMANDO /SETUP-VANILLA
+// ===============================
+const commands = [
+  {
+    name: "setup-vanilla",
+    description: "Cria a estrutura completa do servidor VANILLA"
+  },
+  {
+    name: "ticket",
+    description: "Envia o painel de tickets"
+  }
+];
+
+// ===============================
+// BOT ONLINE
+// ===============================
+client.once("ready", async () => {
+  console.log(`🍦 VANILLA BOT ONLINE: ${client.user.tag}`);
+
+  const rest = new REST({ version: "10" })
+    .setToken(process.env.DISCORD_TOKEN);
+
+  try {
     await rest.put(
       Routes.applicationGuildCommands(
         process.env.CLIENT_ID,
         process.env.GUILD_ID
       ),
       {
-        body: commands.map(command => command.toJSON())
+        body: commands
       }
     );
 
     console.log("✅ Comandos slash registrados.");
   } catch (error) {
-    console.error(
-      "❌ Erro ao registrar comandos:",
-      error.message
+    console.error("❌ Erro ao registrar comandos:", error);
+  }
+});
+
+// ===============================
+// INTERAÇÕES
+// ===============================
+client.on("interactionCreate", async interaction => {
+
+  if (!interaction.isChatInputCommand()) return;
+
+  if (interaction.commandName === "setup-vanilla") {
+
+    await interaction.deferReply({ ephemeral: true });
+
+    try {
+
+      console.log(
+        `⚙️ /setup-vanilla executado por ${interaction.user.tag}`
+      );
+
+      await setupGuild(interaction.guild);
+
+      await interaction.editReply(
+        "✅ **VANILLA configurada com sucesso!**\n\nCargos, categorias e canais foram verificados/criados."
+      );
+
+    } catch (error) {
+
+      console.error("❌ ERRO NO SETUP:", error);
+
+      await interaction.editReply(
+        "❌ Ocorreu um erro durante a configuração.\n\nVeja os **Logs do Render** para descobrir o motivo."
+      );
+    }
+  }
+
+  // ===============================
+  // /TICKET
+  // ===============================
+  if (interaction.commandName === "ticket") {
+
+    await interaction.deferReply({ ephemeral: true });
+
+    const embed = new EmbedBuilder()
+      .setTitle("🎫 Suporte VANILLA")
+      .setDescription(
+        "Precisa de ajuda?\n\nClique no botão abaixo para abrir um ticket privado com a equipe."
+      );
+
+    const button = new ButtonBuilder()
+      .setCustomId("abrir_ticket")
+      .setLabel("Abrir Ticket")
+      .setEmoji("🎫")
+      .setStyle(ButtonStyle.Primary);
+
+    const row = new ActionRowBuilder()
+      .addComponents(button);
+
+    await interaction.channel.send({
+      embeds: [embed],
+      components: [row]
+    });
+
+    await interaction.editReply(
+      "✅ Painel de tickets enviado!"
     );
   }
 });
 
+// ===============================
+// BOTÕES DO TICKET
+// ===============================
 client.on("interactionCreate", async interaction => {
-  try {
-    if (interaction.isChatInputCommand()) {
-      if (interaction.commandName === "setup-vanilla") {
-        if (
-          !interaction.memberPermissions?.has(
-            PermissionFlagsBits.Administrator
-          ) &&
-          !interaction.memberPermissions?.has(
-            PermissionFlagsBits.ManageGuild
-          )
-        ) {
-          return interaction.reply({
-            content:
-              "❌ Você precisa de Administrador ou Gerenciar Servidor.",
-            ephemeral: true
-          });
-        }
 
-        await interaction.deferReply({
-          ephemeral: true
-        });
+  if (!interaction.isButton()) return;
 
-        await setup(interaction.guild);
+  if (interaction.customId === "abrir_ticket") {
 
-        return interaction.editReply(
-          "🍦 **VANILLA configurada com sucesso!**"
-        );
-      }
+    const guild = interaction.guild;
 
-      if (interaction.commandName === "ticket") {
-        if (
-          !interaction.memberPermissions?.has(
-            PermissionFlagsBits.Administrator
-          ) &&
-          !interaction.memberPermissions?.has(
-            PermissionFlagsBits.ManageGuild
-          )
-        ) {
-          return interaction.reply({
-            content:
-              "❌ Apenas a equipe administrativa pode publicar o painel.",
-            ephemeral: true
-          });
-        }
+    const existing = guild.channels.cache.find(
+      c => c.topic === `ticket:${interaction.user.id}`
+    );
 
-        const embed = new EmbedBuilder()
-          .setTitle("🍦 | SUPORTE VANILLA")
-          .setDescription(
-            "Precisa de ajuda?\n\n" +
-            "Clique em **Abrir Ticket** para criar um atendimento privado."
-          );
-
-        const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId("ticket_open")
-            .setLabel("Abrir Ticket")
-            .setEmoji("🎫")
-            .setStyle(ButtonStyle.Success)
-        );
-
-        await interaction.channel.send({
-          embeds: [embed],
-          components: [row]
-        });
-
-        return interaction.reply({
-          content: "✅ Painel enviado.",
-          ephemeral: true
-        });
-      }
-    }
-
-    if (interaction.isButton()) {
-      if (interaction.customId === "ticket_open") {
-        return openTicket(interaction);
-      }
-
-      const staff = staffRoles(interaction.guild);
-
-      const isStaff =
-        staff.some(role =>
-          interaction.member.roles.cache.has(role.id)
-        ) ||
-        interaction.memberPermissions?.has(
-          PermissionFlagsBits.Administrator
-        );
-
-      if (interaction.customId === "ticket_claim") {
-        if (!isStaff) {
-          return interaction.reply({
-            content: "❌ Você não pode assumir tickets.",
-            ephemeral: true
-          });
-        }
-
-        return interaction.reply(
-          `🎫 **Ticket assumido por ${interaction.user}.**`
-        );
-      }
-
-      if (interaction.customId === "ticket_close") {
-        const owner = interaction.channel.topic?.startsWith("ticket:")
-          ? interaction.channel.topic.split(":")[1]
-          : null;
-
-        if (!isStaff && interaction.user.id !== owner) {
-          return interaction.reply({
-            content: "❌ Você não pode fechar este ticket.",
-            ephemeral: true
-          });
-        }
-
-        await interaction.reply("🔒 Ticket sendo fechado...");
-
-        setTimeout(() => {
-          interaction.channel
-            .delete("Ticket fechado")
-            .catch(() => {});
-        }, 1500);
-      }
-    }
-  } catch (error) {
-    console.error(error);
-
-    if (interaction.deferred || interaction.replied) {
-      await interaction.followUp({
-        content: "❌ Ocorreu um erro.",
+    if (existing) {
+      return interaction.reply({
+        content: `❌ Você já possui um ticket aberto: ${existing}`,
         ephemeral: true
-      }).catch(() => {});
-    } else {
-      await interaction.reply({
-        content: "❌ Ocorreu um erro.",
-        ephemeral: true
-      }).catch(() => {});
+      });
     }
+
+    const category = guild.channels.cache.find(
+      c =>
+        c.name === "🎫・TICKETS" &&
+        c.type === ChannelType.GuildCategory
+    );
+
+    let ticketCategory = category;
+
+    if (!ticketCategory) {
+      ticketCategory = await guild.channels.create({
+        name: "🎫・TICKETS",
+        type: ChannelType.GuildCategory
+      });
+    }
+
+    const channel = await guild.channels.create({
+      name: `ticket-${interaction.user.username}`,
+      type: ChannelType.GuildText,
+      parent: ticketCategory.id,
+      topic: `ticket:${interaction.user.id}`,
+      permissionOverwrites: [
+        {
+          id: guild.id,
+          deny: [PermissionsBitField.Flags.ViewChannel]
+        },
+        {
+          id: interaction.user.id,
+          allow: [
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.SendMessages,
+            PermissionsBitField.Flags.ReadMessageHistory
+          ]
+        }
+      ]
+    });
+
+    await channel.send(
+      `🎫 **Ticket aberto por ${interaction.user}**\n\nAguarde o atendimento da equipe VANILLA.`
+    );
+
+    await interaction.reply({
+      content: `✅ Ticket criado: ${channel}`,
+      ephemeral: true
+    });
   }
 });
 
-const PORT = process.env.PORT || 3000;
-
-http
-  .createServer((req, res) => {
-    res.writeHead(200, {
-      "Content-Type": "text/plain; charset=utf-8"
-    });
-
-    res.end("VANILLA Discord Bot online");
-  })
-  .listen(PORT, "0.0.0.0", () => {
-    console.log(`🌐 HTTP ativo na porta ${PORT}`);
-  });
-
+// ===============================
+// LOGIN
+// ===============================
 client.login(process.env.DISCORD_TOKEN);
